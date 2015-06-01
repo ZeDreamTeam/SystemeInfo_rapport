@@ -1,0 +1,89 @@
+\lstdefinelanguage
+   [custom]{Assembler}     % add a "custom" dialect of Assembler
+   % with these extra keywords:
+   {morekeywords={AFC, COP, SUP, JMF, JMP, INF, ADD, DIV, MUL, SUB, PUSH, POP, MOV, BP, SP, IP}} % etc.
+
+\section{Le compilateur}
+
+    \subsection{Etat des lieux}
+    Le projet du compilateur consistait donc à réaliser un compilateur, qui prenait en entrée du code C, et sortait un code assembleur personnalisé et orienté mémoire. 
+    Nous avons donc travaillé dans un premier temps avec l'analyseur lexical \textbf{lex}, qui reconnaissait les mots de notre language, et générait des token, accessibles par notre analyseur syntaxique \textbf{yacc}. Ce dernier consommait alors les tokens produits, et effectuait les actions voulues (génération de code par exemple).
+    
+    Nous avons donc réalisé notre compilateur en deux temps. Tout d'abord, nous avons décidé de traiter un langage simple, démuni de fonctions. Par la suite, nous sommes revenu sur notre compilateur, de façon à implémenter les fonctions, avec l'utilisation d'une pile et d'instructions supplémentaires.
+    
+    \subsubsection*{L'interpreteur}
+    Nous avons aussi réalisé un interpréteur assez basique, permettant d'interpréter notre assembleur. Cet interpréteur, développé à l'aide de \textbf{Lex} et de \textbf{Yacc}, se base sur une \textbf{mémoire d'instruction}, et une \textbf{mémoire de données}. Il nous permet l'exécution d'un programme généré par notre compilateur, et nous laisse la possibilité d'afficher la gestion de la mémoire à l'exécution.
+    
+    \subsection{La version simplifiée du compilateur}
+    La version simplifiée de ce compilateur comprend donc un langage C basique. Un seul type de variable (int), avec la possibilité d'utiliser les opérations basiques (+, -, /, *, \%). De plus, il est possible d'utiliser des \textbf{tests} (if, et else), ainsi que des \textbf{boucles} (while).
+    
+    Nous utilisons 4 composants principaux dans notre code, en plus de nos fichiers yacc et lex. Tout d'abord, nous avons un gestionnaire de \textbf{la table des symboles}. Dans ce dernier, nous ajoutons les variable trouvées dans le code C, leurs adresses en mémoire, ainsi que plusieurs informations attachées (si elles sont initialisées ou non, constantes ou non). Suite à cela, nous pouvons alors savoir à quel endroit en mémoire sera notre variable à l'exécution, et pouvons y faire référence dans notre code assembleur.
+    
+    Suite à cela, nous avons une \textbf{table temporaire}. Elle est utilisée pour les déclarations multiples de variables, afin de pouvoir affecter leurs types. Ainsi, à l'utilisation, on va ajouter à notre table temporaire nos variable, et affecter leurs types une fois toutes les variables ajoutées.
+    
+    Nous avons aussi un gestionnaire de \textbf{déclaration imbriqué} (\textit{nested declarations}), de manière à avoir une gestion des contextes lorsque nous déclarons une variable dans un autre contexte (au début d'un while par exemple).
+    
+    Enfin, nous avons notre \textbf{gestionnaire de jump} (\textit{jmpList}). Il s'agit d'une liste dans laquelle on va ajouter des informations de saut lorsque l'on traite un if ou un while. A la fin du traitement du fichier C, nous allons alors modifier notre code généré pour ajouter les informations de jump supplémentaires que nous avons reçu pendant le traitement.
+    
+    Suite à ces explications, nous pouvons regarder à quoi ressemble un code généré depuis un code C.
+
+\begin{minipage}[t]{0.45\textwidth}
+    \lstinputlisting[language={C},numbers=left,basicstyle=\footnotesize, caption={basic code C}]{sources/basic_prgm.c}
+\end{minipage}   
+\begin{minipage}[t]{0.45\textwidth}
+    \lstinputlisting[language={[custom]Assembler},numbers=left,basicstyle=\footnotesize, caption={basic code assembleur}]{sources/basic_gen.asm}
+\end{minipage}
+    
+    \subsection{Une histoire de fonction}
+    Dans ce projet, nous avons aussi souhaité aller un peu plus loin en proposant l'utilisation de fonctions, comme dans un vrai programme C. Pour cela, nous nous sommes donc basé sur \textbf{une pile} (au lieu d'une mémoire de type RAM), et les adresses font toutes désormais référence à cette pile, sauf pour les instructions de jump qui correspondent à la ligne de l'instruction ou il faut jump dans la ROM.
+    
+    Pour réaliser ces fonctions, nous avons eu besoin d'un composant supplémentaire, une \textbf{table de fonctions}. Dans cette table on ajoute les fonctions a leurs création, en gardant comme information leur nombre d'arguments et la ligne assembleur à laquelle elles démarrent. On peut alors y accéder pour vérifier si une fonction est bien déclarée, et récupérer sa première ligne (pour y faire un saut par exemple). Nous avons aussi utiliser 3 registres, \textbf{BP}, \textbf{SP}, et \textbf{IP} étant respectivement le pointeur de base de pile, le pointeur de tête de pile, et l'instruction pointer. A noter que pour le moment, nous ne gérons pas correctement l'incrémentation de notre SP.
+    
+    \subsubsection*{Déclaration}
+    Nous reconnaissons donc la déclaration des fonctions. Une fois la déclaration trouvée dans notre fichier C, cela signifie que l'on est au début du code assembleur d'une fonction. Il nous faut alors effectuer plusieurs actions.
+    
+    Dans un premier temps, on va parcourir les arguments de la fonction, afin d'ajouter les arguments dans notre table des symboles, avec une adresse relative à notre pile (\texttt{BP - 2 + i}, avec i le numéro de l'argument).
+    
+    Ensuite on va ajouter notre fonction à la table des fonctions le plus tôt possible, de manière à ne pas avoir de problèmes lors de fonctions récursives. Il faut ensuite pusher notre pointeur de base de pile courant, et mettre SP dans BP.
+    
+    \begin{lstlisting}[language={[custom]Assembler},basicstyle=\footnotesize]
+    PUSH    BP
+    MOV     BP  SP
+    \end{lstlisting}
+    
+    Une fois la fonction écrite en assembleur, il ne faut pas oublier de changer notre pointeur de base de pile, et de retourner à la ligne d'où l'on vient.
+    \begin{lstlisting}[language={[custom]Assembler},basicstyle=\footnotesize]
+    POP BP
+    POP IP
+    \end{lstlisting}
+
+    \subsubsection*{Appel}
+    Lors de l'appel des fonctions, il faut faire attention d'empiler tout ce qu'il faut dans le bon ordre. Nous avons décidé d'empiler tout nos arguments dans un premier temps, et d'empiler par la suite l'IP courant avant d'effectuer le jump dans la fonction.
+    
+    \subsubsection*{Résultat}
+    On peut donc maintenant regarder ce que génère notre compilateur depuis un code C utilisant les fonctions. On note l'utilisation volontaire de fonctions récursives.
+    
+\begin{minipage}[t]{0.45\textwidth}
+    \lstinputlisting[language={C},numbers=left,basicstyle=\footnotesize, caption={Function code C}]{sources/func_prgm.c}
+\end{minipage}   
+\begin{minipage}[t]{0.45\textwidth}
+    \lstinputlisting[language={[custom]Assembler},numbers=left,basicstyle=\footnotesize, caption={Function code assembleur}]{sources/func_gen.asm}
+\end{minipage}
+    
+    
+    \subsection{Difficultés rencontrées}
+    Les principales difficultés rencontrées ont été lors de l'implémentation des fonctions. En effet, il nous a fallu plusieurs séance (et du travail à la maison) pour pouvoir définir comment réaliser le passage d'argument, et l'appel correct de ses fonctions. Pour nous inspirer, nous avons compilé du code C en assembleur via gcc et \texttt{gcc -S -O0 } est devenu notre meilleur ami !
+    
+    De même, quelques difficultés ont été éprouvées lors de l'implémentation des JMP et JMP pour les boucles et les tests. Il nous a aussi fallu plusieurs séances de manière à bien comprendre la logique, avant d'implémenter correctement notre \texttt{JmpList}.
+    
+    Nous avons aussi rencontré quelques difficultés d'organisation dans un premier temps, ou travailler à plusieurs sur le même projet nous semblait difficile. En se séparant les tâches correctement, et en effectuant une revue de code, tout est devenu plus simple.
+    
+    
+    \subsection{Pistes pour le futur}
+    Le compilateur obtenu nous parait donc satisfaisant. En effet, il semble possible de compiler un programme basique, contenant même des fonctions. Mais il est bien entendu  possible d'apporter tout un tas d'améliorations. Il faudrait tout d'abord incrémenter SP de façon correcte dans les fonctions, en réservant l'espace associé à nos variables locales dans la pile. On pourrait aussi penser a un système de retour pour les fonctions, stockant un résultat (ou pas) dans un registre de retour. On peut du coup imaginer l'utilisation d'un type supplémentaire, void, permettant principalement de déclarer si une fonction retourne une valeur ou pas.
+    
+    On remarque aussi dans notre programme l'utilisation de ce que nous avons appeler des \textbf{variables secondaires}, permettant de stocker les informations contenues dans une ligne de programme C et non importante à stocker. Par exemple lorsque l'on fait \texttt{a = b+c+3}, les variables c, et b, ainsi que la valeur 3 seront stocké dans des variables secondaires qui seront alors réutilisées dans nos add. Au début de la réalisation de ce compilateur, nous avions souhaité séparer l'adressage de ces valeurs par rapport à nos variables, de façon à pouvoir mieux comprendre le code généré. Aujourd'hui, les adresses des variables étant relative à la pile (BP), l'utilisation de ces variables semble assez étrange.
+    
+    Il serait aussi intéressant de différencier dans notre code généré les adresses, des valeurs. On suppose que chaque instructions ne peux utiliser que l'un ou l'autre, et cela n'est pas logique comparé au code assembleur normal. Par exemple, l'instruction PUSH devrait pouvoir pusher une valeur ET une adresse. On pourrait tout simplement utiliser des crochets pour signaler \textit{la valeur à cette adresse}.
+    
+     Nous venons de détailler les différentes pistes que nous aurions voulu essayer d'implémenter, mais pour cause de temps manquant, n'avons pu. On peut imaginer tout un tas d'autres fonctionnalités qui nous sont passées par la tête (comme la gestion des prototypes de fonctions,  ou l'optimisation de certains bouts de code qui paraissent inutile (i.e.:utiliser constamment une variable secondaire))

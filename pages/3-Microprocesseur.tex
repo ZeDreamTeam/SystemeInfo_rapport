@@ -1,0 +1,49 @@
+\section{Le microprocesseur}
+    \subsection{Etat des lieux}
+    La réalisation de ce microprocesseur était donc la deuxième partie de ce projet système info. Nous avons eu l'occasion de travailler avec du \textbf{VHDL}, langage de conception matérielle découvert cette année. De plus, nous avons utiliser l'ide ISE et son outil de simulation. Par le biais de notre chargé de TP (Mr. Benoit Morgan), nous avons aussi pu découvrir une série de \textbf{Makefile}, qui nous ont permis de développer de façon plus propre, et de mieux comprendre la compilation des fichiers VHDL. Nous pouvions alors poster nos sources sur \textbf{Github}, et travailler en utilisant notre éditeur favoris, à la place d'ISE. Bien entendu, une fois le projet compilé, nous avons du utiliser ISE pour pouvoir vérifier la simulation de nos tests de façon correct.
+    
+    Nous avons ainsi pu implémenter les fonctionnalité requises pour interpréter un code assembleur ultra minimaliste. Nous avons pu implémenter l'utilisation des principales instructions assembleur que sont ADD, MUL, SOU, COP, AFC, LDR, et STR. Nous avons aussi souhaité réaliser les implémentations des JMP et des JMF.
+    
+    
+    \subsection{Fonctionnement du microprocesseur}
+    Le travail sur ce microprocesseur c'est donc divisé en deux parties. Dans un premier temps, nous avons simplement implémenter les différents outils requis par notre microprocesseur, avant de les faire travailler ensemble, et de gérer les problèmes entraînés.
+    
+    Ainsi, nous avons pu sans trop de difficultés concevoir un ALU, une mémoire de données (RAM), une mémoire de programme (ROM), ainsi qu'un banc de registres. Cela nous a permis d'apprendre à maîtriser à mieux comprendre la logique de VHDL, leurs implémentations n'étant pas trop difficile. Pour chaque module développé - jusqu'à un certain point - nous avons aussi développé un banc de test, nous permettant de vérifier le bon fonctionnement de ces derniers.
+    
+    Suite à cela, nous avons donc implémenté le chemin de données, reprenant chacun des modules ci dessus, en les reliant par des pipelines. Ces pipeline on pour but d'autoriser l'accès sur le même top d'horloge à des composants différents, et donc d'effectuer plusieurs actions en même temps.
+    
+    Lors de l'implémentation du chemin de données, nous nous sommes heurtés à un problème de taille : \textbf{la gestion des aléas}.
+    
+    Enfin, nous avons souhaité implémenter l'utilisation des sauts absolus, conditionnels ou non. De cette façon nous avons rajouté un ProgramConter, permettant de modifier le pointeur d'instruction, ou de l'incrémenter.
+    
+    \subsection{Les Difficultés rencontrés}
+    Au commencement du projet microprocesseur, nous avons eu quelques difficultés pour apprendre à maîtriser les outils vu en cours et en TP. En effet, avant d'attaquer ce projet, nous n'avions eu que quelques séances de TP pour apprendre VHDL, qui n'ont en fait servi que d'introduction. Une fois lancé nous avons, je pense, su maîtrisé les outils à notre disposition, et c'est pour cela que nous avons fait le choix d'utiliser un système de Makefile au lieu de passer par l'interface d'ISE.
+    
+   \subsubsection*{Les aléas de données}
+   L'écriture dans un registre se fait à la fin du chemin de données. Par exemple, si on affecte 12 au registre 1, il se passe 5 top d'horloge entre le moment où l'instruction part de la rom et le moment où le registre est bel et bien mis à jour. Si l'instruction suivante utilise un registre qui doit être mis à jour, elle va utiliser l'ancienne valeur du registre au lieu d'attendre qu'il soit mis à jour. Il faut donc se débrouiller pour qu'une instruction attende la mise à jour des registres - si mise à jour il y a - avant de circuler dans le chemin de données.
+   Pour ce faire on a implémenté un composant : \textbf{l'AleaManager}, qui intercepte ce qui circule entre la Rom et le pipeline LI/DI. Lorsqu'il détecte une instruction qui lit dans un ou plusieurs registres, il check si ce ou ces registres ne sont pas sujets à une modification venant d'une instruction précédente, en lisant les valeurs en sortie de LI/DI, de DI/EX et de EX/MEM.
+   Si c'est le cas, il met à zéro son flag ENABLE (à un par défaut) qui va inhiber l'IPCounter et la Rom, et ce jusqu'à ce que les registres soient actualisés, en envoyant entre temps des NOP (\texttt{0x00000000}).
+   
+   Lorsqu'elle est inhibée, la Rom recopie en boucle la dernière valeur qu'elle a sortie, afin de ne pas perdre d'information.
+   L'IPCounter quand à lui ne compte simplement plus.
+   
+   Par la suite, nous avons diminué de 1 le nombre de NOP nécessaire, en autorisant la lecture et l'écriture en simultané dans le banc de registre. Il n'est maintenant plus nécessaire de checker les registres de destinations en sortie de EX/MEM.
+   
+   
+    \subsubsection*{Les jumps et jumps if zero}
+   Pour gérer les JMP et les JZ, nous avons transformé notre IPCounter en ProgramCounter et nous l'avons plus fortement relié à la ROM : 
+   
+   Pour un jump conditionnel : un multiplexeur lit la sortie de la Rom et nous envoie un \texttt{0x0B01} sur l'entrée SEL, indiquant un jump inconditionnel et l'ADR où jumper.
+   PCCounter envoie un signal DROP à l'AleaManager qui envoie un NOP au lieu d'envoyer l'instruction suivante déjà chargée en Rom.
+   
+   Pour les jumps inconditionnels la même méthode peut s'appliquer, cependant il y a une difficulté supplémentaire : il faut attendre que l'Alu effectue le calcul demandé par l'instruction précédente pour pouvoir lire la bonne valeur sur le flag Z. On utilise l'AleaManager pour inhiber le ProgramCounter et la Rom sur un top d'horloge et tout se passe bien !
+    
+    
+    \subsection{Pistes pour le futur}
+    Nous aurions souhaité mettre à jour notre microprocesseur, de manière à pouvoir s'accorder à notre compilateur, et pouvoir exécuter, une fois passé dans le cross assembler, l'ensemble de nos programmes compilés. Cela requiererait beaucoup d'investissement de notre part, pour pouvoir terminer la gestion des boucle et des fonctions.
+    
+    L'implémentation des fonctions nous demanderait notamment la modification de la RAM en pile, liées aux instructions PUSH et POP, mais aussi à des registres de base et de pile. Il nous faudrait  aussi ajouter la gestion d'un registre d'instruction pointer, relié à notre module ProgramCounter.
+    
+    Pour la gestion des boucles, bien que l'implémentation des jump absolu soit présente, il nous manque la gestion des comparaison, qui ne nous semble pas compliqué, mais que nous n'avons pas eu le temps de réaliser.
+    
+    De même que le compilateur, on peut imaginer plusieurs fonctionnalités que l'on aurait pu réaliser, comme le chargement d'un programme dans la ROM, mais qui aurait demander du temps supplémentaire !

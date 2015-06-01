@@ -1,0 +1,29 @@
+\documentclass[12pt,a4paper]{article}
+
+\include{packages}  % différents packages à inclure
+\include{style}     % style général du doc
+\include{title}     % page de titre
+
+% Modifier ici les auteurs & cie
+\newcommand{\NomProjet}{Projet Système Info}
+\newcommand{\Titre}{Rapport}
+\newcommand{\Date}{\today}
+\newcommand{\links}{Sources : \href{https://github.com/ZeDreamTeam/Compilateur}{\texttt{Compilateur}} - \href{https://github.com/ZeDreamTeam/MicroProcesseur}{\texttt{Microprocesseur}} -  \href{https://github.com/ZeDreamTeam/SystemeInfo_rapport}{\texttt{Rapport}}}
+\title{\Titre}
+\author{\Auteurs}
+\date{\Date}
+
+\begin{document}
+
+    \maketitle                          % page de titre
+
+    \tableofcontents                    % table des matières
+    \newpage
+
+    \include{pages/1-Introduction}
+    \include{pages/2-Compilateur}
+    \include{pages/3-Microprocesseur}
+    \include{pages/4-Conclusion}
+
+
+\end{document}
